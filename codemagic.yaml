@@ -12,7 +12,7 @@ workflows:
       events:
         - push
       branch_patterns:
-        - 'main'
+        - pattern: 'main'
     scripts:
       - name: Set up local.properties and environment permissions
         script: | 
