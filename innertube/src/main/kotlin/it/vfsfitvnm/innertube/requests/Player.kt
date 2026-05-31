@@ -4,22 +4,20 @@ import io.ktor.client.call.body
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import it.vfsfitvnm.innertube.Innertube
+import it.vfsfitvnm.innertube.models.Context
 import it.vfsfitvnm.innertube.models.PlayerResponse
 import it.vfsfitvnm.innertube.models.bodies.PlayerBody
 import it.vfsfitvnm.innertube.utils.runCatchingNonCancellable
-
-// Direct binding to your custom extractor package
-import com.github.MetrolistGroup.MetrolistExtractor.NZiksExtractor 
+import com.github.MetrolistGroup.MetrolistExtractor.NZiksExtractor
 
 suspend fun Innertube.player(body: PlayerBody) = runCatchingNonCancellable {
-    // Primary request using standard InnerTube configurations (e.g., ANDROID_MUSIC)
-    // Removed the restrictive .mask() to ensure metadata fields survive if playback is healthy
+    // Primary request using standard InnerTube configurations
     val response = client.post(player) {
         setBody(body)
     }.body<PlayerResponse>()
 
     // Check if the native response contains streamable formats directly
-    if (response.playabilityStatus?.status == "OK" && response.streamingData?.adaptiveFormats?.isNotEmpty() == true) {
+    if (response.playabilityStatus?.status == "OK" && !response.streamingData?.adaptiveFormats.isNullOrEmpty()) {
         return@runCatchingNonCancellable response
     }
 
@@ -27,8 +25,8 @@ suspend fun Innertube.player(body: PlayerBody) = runCatchingNonCancellable {
     val safePlayerResponse = client.post(player) {
         setBody(
             body.copy(
-                context = it.vfsfitvnm.innertube.models.Context.DefaultAgeRestrictionBypass.copy(
-                    thirdParty = it.vfsfitvnm.innertube.models.Context.ThirdParty(
+                context = Context.DefaultAgeRestrictionBypass.copy(
+                    thirdParty = Context.ThirdParty(
                         embedUrl = "https://www.youtube.com/watch?v=${body.videoId}"
                     )
                 ),
@@ -36,27 +34,29 @@ suspend fun Innertube.player(body: PlayerBody) = runCatchingNonCancellable {
         )
     }.body<PlayerResponse>()
 
-    // Use your custom local N-Ziks Extractor to salvage streams if YouTube returns unplayable signatures
+    // Use custom N-Ziks Extractor to salvage streams if YouTube returns unplayable signatures
     runCatching {
-        // Fetch fresh stream endpoints directly from your custom engine
         val nziksStreamInfo = NZiksExtractor.getStreamInfo(body.videoId)
+        val audioStreams = nziksStreamInfo.audioStreams
         
-        // Base our object on safePlayerResponse to preserve complete UI metadata (thumbnails, details)
+        require(audioStreams.isNotEmpty()) { "NZiksExtractor returned no audio streams" }
+        
+        // Base our object on safePlayerResponse to preserve complete UI metadata
         safePlayerResponse.copy(
             playabilityStatus = PlayerResponse.PlayabilityStatus(status = "OK"),
             streamingData = PlayerResponse.StreamingData(
-                adaptiveFormats = nziksStreamInfo.audioStreams.map { stream ->
+                adaptiveFormats = audioStreams.map { stream ->
                     PlayerResponse.AdaptiveFormat(
                         url = stream.url,
-                        bitrate = stream.bitrate,
-                        mimeType = "audio/mp4; codecs=\"mp4a.40.2\"",
+                        bitrate = stream.bitrate ?: -1,
+                        mimeType = stream.mimeType ?: "audio/mp4; codecs=\"mp4a.40.2\"",
                         contentLength = stream.contentLength
                     )
                 }
             )
         )
-    }.getOrElse {
-        // If the custom extractor fails or encounters structural anomalies, fallback to the safest available meta container
+    }.getOrElse { 
+        // If the custom extractor fails, fallback to the safest available response
         if (safePlayerResponse.playabilityStatus?.status == "OK") safePlayerResponse else response
     }
 }
