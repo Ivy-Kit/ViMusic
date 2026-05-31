@@ -5,17 +5,14 @@ workflows:
     instance_type: mac_mini_m2
     environment:
       groups:
-        - keystore_credentials # Configure your keystore base64 strings here if signing
+        - keystore_credentials
       vars:
         GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
-      android_signing:
-        - reference: keystore_credentials
     triggering:
       events:
         - push
       branch_patterns:
-        - target: main
-          src: true
+        - 'main'
     scripts:
       - name: Set up local.properties and environment permissions
         script: | 
@@ -29,8 +26,7 @@ workflows:
     publishing:
       email:
         recipients:
-          - your-email@domain.com # Update to your email
+          - your-email@domain.com
         notify:
           success: true
           failure: true
-
