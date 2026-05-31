@@ -1,28 +1,41 @@
 workflows:
   android-release-build:
-    name: ViMusic - Tuinity
-    max_build_duration: 30
-    instance_type: linux_arm64 # <--- Native Linux container (instantly provisions)
+    name: ViMusic - Release Build
+    max_build_duration: 60
+    instance_type: linux_arm64
+
     environment:
       groups:
         - keystore_credentials
       vars:
-        GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
+        GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -XX:+HeapDumpOnOutOfMemoryError"
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+      android_signing:
+        - keystore_credentials
+
     triggering:
       events:
         - push
       branch_patterns:
-        - pattern: 'main'
+        - pattern: main
+          include: true
+          source: true
+
     scripts:
-      - name: Set up local.properties and environment permissions
-        script: | 
+      - name: Verify environment
+        script: |
+          java -version
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
           chmod +x gradlew
-      - name: Build Production Release APK
+
+      - name: Build Release APK
         script: |
-          ./gradlew :app:assembleRelease --no-daemon
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
     artifacts:
       - app/build/outputs/apk/release/*.apk
+      - app/build/outputs/mapping/release/mapping.txt
+
     publishing:
       email:
         recipients:
@@ -30,3 +43,9 @@ workflows:
         notify:
           success: true
           failure: true
+
+    cache:
+      cache_paths:
+        - $CM_BUILD_DIR/.gradle
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
