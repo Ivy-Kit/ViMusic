@@ -1,0 +1,36 @@
+workflows:
+  android-release-build:
+    name: ViMusic - Tuinity Release Build
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - keystore_credentials # Configure your keystore base64 strings here if signing
+      vars:
+        GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g"
+      android_signing:
+        - reference: keystore_credentials
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - target: main
+          src: true
+    scripts:
+      - name: Set up local.properties and environment permissions
+        script: | 
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          chmod +x gradlew
+      - name: Build Production Release APK
+        script: |
+          ./gradlew :app:assembleRelease --no-daemon
+    artifacts:
+      - app/build/outputs/apk/release/*.apk
+    publishing:
+      email:
+        recipients:
+          - your-email@domain.com # Update to your email
+        notify:
+          success: true
+          failure: true
+
