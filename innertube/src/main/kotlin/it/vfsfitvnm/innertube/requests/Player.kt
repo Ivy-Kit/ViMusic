@@ -1,79 +1,62 @@
 package it.vfsfitvnm.innertube.requests
 
 import io.ktor.client.call.body
-import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
 import it.vfsfitvnm.innertube.Innertube
-import it.vfsfitvnm.innertube.models.Context
 import it.vfsfitvnm.innertube.models.PlayerResponse
 import it.vfsfitvnm.innertube.models.bodies.PlayerBody
 import it.vfsfitvnm.innertube.utils.runCatchingNonCancellable
-import kotlinx.serialization.Serializable
+
+// Direct binding to your custom extractor package
+import com.github.MetrolistGroup.MetrolistExtractor.NZiksExtractor 
 
 suspend fun Innertube.player(body: PlayerBody) = runCatchingNonCancellable {
-    // Primary request using standard context configurations (e.g., ANDROID_MUSIC)
+    // Primary request using standard InnerTube configurations (e.g., ANDROID_MUSIC)
+    // Removed the restrictive .mask() to ensure metadata fields survive if playback is healthy
     val response = client.post(player) {
         setBody(body)
-        mask("playabilityStatus.status,playerConfig.audioConfig,streamingData.adaptiveFormats,videoDetails.videoId")
     }.body<PlayerResponse>()
 
-    if (response.playabilityStatus?.status == "OK") {
+    // Check if the native response contains streamable formats directly
+    if (response.playabilityStatus?.status == "OK" && response.streamingData?.adaptiveFormats?.isNotEmpty() == true) {
         return@runCatchingNonCancellable response
     }
 
-    // Secondary request utilizing embed client structure to bypass age/region locks
+    // Secondary request utilizing embedded context to fetch complete fallback metadata
     val safePlayerResponse = client.post(player) {
         setBody(
             body.copy(
-                context = Context.DefaultAgeRestrictionBypass.copy(
-                    thirdParty = Context.ThirdParty(
+                context = it.vfsfitvnm.innertube.models.Context.DefaultAgeRestrictionBypass.copy(
+                    thirdParty = it.vfsfitvnm.innertube.models.Context.ThirdParty(
                         embedUrl = "https://www.youtube.com/watch?v=${body.videoId}"
                     )
                 ),
             )
         )
-        mask("playabilityStatus.status,playerConfig.audioConfig,streamingData.adaptiveFormats,videoDetails.videoId")
     }.body<PlayerResponse>()
 
-    // If the internal YouTube embed bypass fails, return original response to let upper layers handle errors
-    if (safePlayerResponse.playabilityStatus?.status != "OK") {
-        return@runCatchingNonCancellable response
-    }
-
-    // Fallback streaming mirror parsing block
-    @Serializable
-    data class AudioStream(
-        val url: String,
-        val bitrate: Long
-    )
-
-    @Serializable
-    data class PipedResponse(
-        val audioStreams: List<AudioStream>
-    )
-
+    // Use your custom local N-Ziks Extractor to salvage streams if YouTube returns unplayable signatures
     runCatching {
-        // NOTE: Keep this endpoint updated to an active, reliable fallback provider
-        val fallbackInstance = "pipedapi.kavin.rocks" 
+        // Fetch fresh stream endpoints directly from your custom engine
+        val nziksStreamInfo = NZiksExtractor.getStreamInfo(body.videoId)
         
-        val audioStreams = client.get("https://$fallbackInstance/streams/${body.videoId}") {
-            contentType(ContentType.Application.Json)
-        }.body<PipedResponse>().audioStreams
-
+        // Base our object on safePlayerResponse to preserve complete UI metadata (thumbnails, details)
         safePlayerResponse.copy(
-            streamingData = safePlayerResponse.streamingData?.copy(
-                adaptiveFormats = safePlayerResponse.streamingData.adaptiveFormats?.map { adaptiveFormat ->
-                    adaptiveFormat.copy(
-                        url = audioStreams.find { it.bitrate == adaptiveFormat.bitrate }?.url ?: adaptiveFormat.url
+            playabilityStatus = PlayerResponse.PlayabilityStatus(status = "OK"),
+            streamingData = PlayerResponse.StreamingData(
+                adaptiveFormats = nziksStreamInfo.audioStreams.map { stream ->
+                    PlayerResponse.AdaptiveFormat(
+                        url = stream.url,
+                        bitrate = stream.bitrate,
+                        mimeType = "audio/mp4; codecs=\"mp4a.40.2\"",
+                        contentLength = stream.contentLength
                     )
                 }
             )
         )
     }.getOrElse {
-        // If external API structure fails or times out, fall back safely to the InnerTube response 
-        safePlayerResponse
+        // If the custom extractor fails or encounters structural anomalies, fallback to the safest available meta container
+        if (safePlayerResponse.playabilityStatus?.status == "OK") safePlayerResponse else response
     }
 }
