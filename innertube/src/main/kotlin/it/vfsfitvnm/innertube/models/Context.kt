@@ -27,7 +27,7 @@ data class Context(
         val DefaultWeb = Context(
             client = Client(
                 clientName = "WEB_REMIX",
-                clientVersion = "1.20220918",
+                clientVersion = "1.20231101.01.00",
                 platform = "DESKTOP",
             )
         )
@@ -35,10 +35,10 @@ data class Context(
         val DefaultAndroid = Context(
             client = Client(
                 clientName = "ANDROID_MUSIC",
-                clientVersion = "5.28.1",
+                clientVersion = "7.27.52",
                 platform = "MOBILE",
                 androidSdkVersion = 30,
-                userAgent = "com.google.android.apps.youtube.music/5.28.1 (Linux; U; Android 11) gzip"
+                userAgent = "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 11) gzip"
             )
         )
 
@@ -47,6 +47,16 @@ data class Context(
                 clientName = "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
                 clientVersion = "2.0",
                 platform = "TV"
+            )
+        )
+
+        // iOS client — useful as an alternative when Android gets blocked
+        val DefaultIos = Context(
+            client = Client(
+                clientName = "IOS_MUSIC",
+                clientVersion = "6.21",
+                platform = "MOBILE",
+                userAgent = "com.google.ios.youtubemusic/6.21 (iPhone14,3; U; CPU iPhone OS 16_7 like Mac OS X)"
             )
         )
     }
