@@ -12,8 +12,8 @@ android {
         applicationId = "it.vfsfitvnm.vimusic"
         minSdk = 21
         targetSdk = 34
-        versionCode = 20
-        versionName = "0.5.4"
+        versionCode = 21
+        versionName = "0.5.5"
     }
 
     splits {
@@ -33,8 +33,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             manifestPlaceholders["appName"] = "ViMusic"
-            // NOTE: For Play Store / proper distribution, create a release signing config
-            // instead of using debug. This is fine for sideloading / GitHub releases.
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -62,7 +60,6 @@ android {
     }
 }
 
-// Modern replacement for the deprecated android.kotlinOptions block
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
