@@ -8,21 +8,32 @@ import it.vfsfitvnm.innertube.models.Context
 import it.vfsfitvnm.innertube.models.PlayerResponse
 import it.vfsfitvnm.innertube.models.bodies.PlayerBody
 import it.vfsfitvnm.innertube.utils.runCatchingNonCancellable
-import com.github.MetrolistGroup.MetrolistExtractor.NZiksExtractor
 
 suspend fun Innertube.player(body: PlayerBody) = runCatchingNonCancellable {
-    // Primary request using standard InnerTube configurations
-    val response = client.post(player) {
-        setBody(body)
+    // Primary attempt: Android Music client (returns direct URLs, no cipher needed)
+    val androidResponse = client.post(player) {
+        setBody(body.copy(context = Context.DefaultAndroid))
     }.body<PlayerResponse>()
 
-    // Check if the native response contains streamable formats directly
-    if (response.playabilityStatus?.status == "OK" && !response.streamingData?.adaptiveFormats.isNullOrEmpty()) {
-        return@runCatchingNonCancellable response
+    if (androidResponse.playabilityStatus?.status == "OK" &&
+        !androidResponse.streamingData?.adaptiveFormats.isNullOrEmpty()) {
+        return@runCatchingNonCancellable androidResponse
     }
 
-    // Secondary request utilizing embedded context to fetch complete fallback metadata
-    val safePlayerResponse = client.post(player) {
+    // Fallback 1: Try iOS Music client
+    val iosResponse = runCatching {
+        client.post(player) {
+            setBody(body.copy(context = Context.DefaultIos))
+        }.body<PlayerResponse>()
+    }.getOrNull()
+
+    if (iosResponse?.playabilityStatus?.status == "OK" &&
+        !iosResponse.streamingData?.adaptiveFormats.isNullOrEmpty()) {
+        return@runCatchingNonCancellable iosResponse
+    }
+
+    // Fallback 2: Embedded/age-restriction bypass context
+    val embeddedResponse = client.post(player) {
         setBody(
             body.copy(
                 context = Context.DefaultAgeRestrictionBypass.copy(
@@ -34,29 +45,14 @@ suspend fun Innertube.player(body: PlayerBody) = runCatchingNonCancellable {
         )
     }.body<PlayerResponse>()
 
-    // Use custom N-Ziks Extractor to salvage streams if YouTube returns unplayable signatures
-    runCatching {
-        val nziksStreamInfo = NZiksExtractor.getStreamInfo(body.videoId)
-        val audioStreams = nziksStreamInfo.audioStreams
-        
-        require(audioStreams.isNotEmpty()) { "NZiksExtractor returned no audio streams" }
-        
-        // Base our object on safePlayerResponse to preserve complete UI metadata
-        safePlayerResponse.copy(
-            playabilityStatus = PlayerResponse.PlayabilityStatus(status = "OK"),
-            streamingData = PlayerResponse.StreamingData(
-                adaptiveFormats = audioStreams.map { stream ->
-                    PlayerResponse.AdaptiveFormat(
-                        url = stream.url,
-                        bitrate = stream.bitrate ?: -1,
-                        mimeType = stream.mimeType ?: "audio/mp4; codecs=\"mp4a.40.2\"",
-                        contentLength = stream.contentLength
-                    )
-                }
-            )
-        )
-    }.getOrElse { 
-        // If the custom extractor fails, fallback to the safest available response
-        if (safePlayerResponse.playabilityStatus?.status == "OK") safePlayerResponse else response
+    // Return whichever fallback has a good status, preferring the embedded one
+    if (embeddedResponse.playabilityStatus?.status == "OK" &&
+        !embeddedResponse.streamingData?.adaptiveFormats.isNullOrEmpty()) {
+        embeddedResponse
+    } else if (iosResponse?.playabilityStatus?.status == "OK") {
+        iosResponse
+    } else {
+        // Return the original android response so callers can inspect the error status
+        androidResponse
     }
 }
