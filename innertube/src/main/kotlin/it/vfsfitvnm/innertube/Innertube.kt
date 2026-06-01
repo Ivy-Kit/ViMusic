@@ -38,7 +38,7 @@ object Innertube {
         }
 
         defaultRequest {
-            url(scheme = "https", host ="music.youtube.com") {
+            url(scheme = "https", host = "music.youtube.com") {
                 headers.append(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                 headers.append("X-Goog-Api-Key", "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8")
                 parameters.append("prettyPrint", "false")
